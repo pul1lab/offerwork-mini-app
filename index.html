@@ -1,5 +1,206 @@
 <!DOCTYPE html>
-<html>
-<head><title>Test</title></head>
-<body><h1>Mini App работает!</h1></body>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Offers Work</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            margin: 0;
+            padding: 16px;
+            background-color: var(--tg-theme-bg-color, #ffffff);
+            color: var(--tg-theme-text-color, #000000);
+        }
+        .menu-card {
+            background-color: var(--tg-theme-secondary-bg-color, #f0f0f0);
+            padding: 16px;
+            border-radius: 12px;
+            margin-bottom: 8px;
+            cursor: pointer;
+        }
+        .btn {
+            background-color: var(--tg-theme-button-color, #2ea6ff);
+            color: var(--tg-theme-button-text-color, #ffffff);
+            padding: 12px;
+            border-radius: 8px;
+            border: none;
+            width: 100%;
+            font-size: 16px;
+            margin-bottom: 8px;
+            cursor: pointer;
+        }
+        #main-menu, #clips-menu, #upload-form, #history-view {
+            display: none;
+        }
+        .active {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <div id="main-menu">
+        <div id="profile-card" class="menu-card"></div>
+        <button class="btn" onclick="showSection('clips-menu')">📤 Клипы</button>
+        <button class="btn" onclick="showSection('finance')">💰 Финансы</button>
+        <button class="btn" onclick="showSection('settings')">⚙️ Настройки</button>
+        <button class="btn" onclick="showSection('referral')">👥 Пригласить друга</button>
+    </div>
+
+    <div id="clips-menu">
+        <h3>🎬 Клипы</h3>
+        <button class="btn" onclick="showHistory()">📋 История</button>
+        <button class="btn" onclick="showUploadForm()">📤 Загрузить видео</button>
+        <button class="btn" onclick="alert('В разработке')">🕵️ Мои запросы</button>
+        <button class="btn" onclick="showMainMenu()">🔙 Назад</button>
+    </div>
+
+    <div id="upload-form">
+        <h3>Загрузка видео</h3>
+        <select id="offer-select"></select>
+        <input type="text" id="video-link" placeholder="Ссылка на видео">
+        <button class="btn" onclick="submitVideo()">Отправить</button>
+        <button class="btn" onclick="showClipsMenu()">Отмена</button>
+    </div>
+
+    <div id="history-view">
+        <h3>📋 История заявок</h3>
+        <div id="history-list"></div>
+        <div id="pagination"></div>
+        <button class="btn" onclick="showClipsMenu()">🔙 Назад</button>
+    </div>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        const API_BASE = 'https://pul1lab.github.io/offerwork-mini-app/';;;  // твой serveo URL
+        let currentSection = 'main-menu';
+
+        // Инициализация при загрузке
+        tg.ready();
+        const initData = tg.initDataUnsafe; // Здесь будет информация о пользователе
+        const telegramId = initData.user?.id; // Если доступен
+        // Временная авторизация: передаем ID в заголовках запросов
+        if (telegramId) {
+            // Загрузим профиль
+            fetchProfile();
+        } else {
+            alert('Пользователь не авторизован');
+        }
+
+        function showSection(sectionId) {
+            document.querySelectorAll('.active').forEach(el => el.classList.remove('active'));
+            if (sectionId === 'main-menu') showMainMenu();
+            else if (sectionId === 'clips-menu') showClipsMenu();
+            else alert('Раздел в разработке');
+        }
+
+        function showMainMenu() {
+            document.getElementById('main-menu').classList.add('active');
+            document.getElementById('clips-menu').classList.remove('active');
+            document.getElementById('upload-form').classList.remove('active');
+            document.getElementById('history-view').classList.remove('active');
+        }
+
+        function showClipsMenu() {
+            document.getElementById('main-menu').classList.remove('active');
+            document.getElementById('clips-menu').classList.add('active');
+            document.getElementById('upload-form').classList.remove('active');
+            document.getElementById('history-view').classList.remove('active');
+            fetchOffers(); // загрузим список офферов для формы загрузки
+        }
+
+        async function fetchProfile() {
+            const response = await fetch(`${API_BASE}/api/user/profile`, {
+                headers: {'X-Telegram-ID': telegramId}
+            });
+            const data = await response.json();
+            if (data.error) {
+                alert(data.error);
+                return;
+            }
+            document.getElementById('profile-card').innerHTML = `
+                <b>${data.name}</b> (ID: ${data.id})<br>
+                Баланс: ${data.balance} ₽<br>
+                Клипов: ${data.videos_count}<br>
+                Друзей: ${data.referral_count}<br>
+                Реквизиты: ${data.payment_info}<br>
+                Реф. ссылка: ${data.referral_link}
+            `;
+            showMainMenu();
+        }
+
+        async function fetchOffers() {
+            const response = await fetch(`${API_BASE}/api/offers`);
+            const data = await response.json();
+            const select = document.getElementById('offer-select');
+            select.innerHTML = data.offers.map(o => `<option value="${o.name}">${o.name}</option>`).join('');
+        }
+
+        function showUploadForm() {
+            document.getElementById('clips-menu').classList.remove('active');
+            document.getElementById('upload-form').classList.add('active');
+        }
+
+        async function submitVideo() {
+            const offer_name = document.getElementById('offer-select').value;
+            const video_link = document.getElementById('video-link').value;
+            if (!video_link) {
+                alert('Введите ссылку');
+                return;
+            }
+            const response = await fetch(`${API_BASE}/api/user/upload`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Telegram-ID': telegramId
+                },
+                body: JSON.stringify({ offer_name, video_link, title: '' })
+            });
+            const data = await response.json();
+            if (data.status === 'ok') {
+                alert(`Заявка №${data.video_id} отправлена! Место в очереди: ${data.queue_position}`);
+                showClipsMenu();
+            } else {
+                alert(data.error || 'Ошибка загрузки');
+            }
+        }
+
+        async function showHistory(page = 1) {
+            document.getElementById('clips-menu').classList.remove('active');
+            document.getElementById('history-view').classList.add('active');
+            const response = await fetch(`${API_BASE}/api/user/history?page=${page}&limit=5`, {
+                headers: {'X-Telegram-ID': telegramId}
+            });
+            const data = await response.json();
+            const list = document.getElementById('history-list');
+            list.innerHTML = data.videos.map(v => `
+                <div class="menu-card">
+                    <b>Заказ №${v.id}</b><br>
+                    Оффер: ${v.offer_company}<br>
+                    Статус: ${getStatusEmoji(v.status)} ${v.status}<br>
+                    Доход: ${v.earned ? v.earned + ' ₽' : '—'}<br>
+                    Очередь: ${v.queue_pos || '—'}
+                </div>
+            `).join('');
+
+            // Пагинация
+            const pag = document.getElementById('pagination');
+            let html = '';
+            if (page > 1) {
+                html += `<button class="btn" onclick="showHistory(${page - 1})">◀️ Назад</button>`;
+            }
+            html += ` ${page} / ${Math.ceil(data.total / data.limit)} `;
+            if (page < Math.ceil(data.total / data.limit)) {
+                html += `<button class="btn" onclick="showHistory(${page + 1})">Вперёд ▶️</button>`;
+            }
+            pag.innerHTML = html;
+        }
+
+        function getStatusEmoji(status) {
+            const emojis = { 'moderation': '⏳', 'approved': '✅', 'rejected': '❌' };
+            return emojis[status] || '';
+        }
+    </script>
+</body>
 </html>
